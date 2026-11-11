@@ -95,3 +95,51 @@
 19:00 | Syroha M. vs Bruzek P.
 
 19:00 | Smrcek M. vs Kucirek O.
+
+19:00 | Martin Vizek vs Martin Sobisek
+
+19:00 | Michal Syroha vs Petr Bruzek
+
+19:00 | Milan Smrcek vs Ondrej Kucirek
+
+19:30 | Ales Hlawatschke vs Petr Zmuda
+
+19:30 | Rostislav Hasman vs Jan Framberk
+
+19:30 | Tomas Regner vs Jan Steffan
+
+20:00 | Martin Sobisek vs Ales Bayer
+
+20:00 | Ondrej Kucirek vs Martin Novak
+
+20:00 | Petr Bruzek vs Jaroslav Strnad
+
+20:30 | Martin Vizek vs Petr Zmuda
+
+20:30 | Michal Syroha vs Jan Framberk
+
+20:30 | Milan Smrcek vs Jan Steffan
+
+21:00 | Ales Bayer vs Ales Hlawatschke
+
+21:00 | Jaroslav Strnad vs Rostislav Hasman
+
+21:00 | Martin Novak vs Tomas Regner
+
+21:30 | Jan Framberk vs Petr Bruzek
+
+21:30 | Jan Steffan vs Ondrej Kucirek
+
+21:30 | Petr Zmuda vs Martin Sobisek
+
+22:00 | Ales Bayer vs Martin Vizek
+
+22:00 | Jaroslav Strnad vs Michal Syroha
+
+22:00 | Martin Novak vs Milan Smrcek
+
+22:30 | Martin Sobisek vs Ales Hlawatschke
+
+22:30 | Ondrej Kucirek vs Tomas Regner
+
+22:30 | Petr Bruzek vs Rostislav Hasman
