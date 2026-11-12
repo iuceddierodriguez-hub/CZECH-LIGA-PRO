@@ -1,145 +1,97 @@
-12:00 | Regner T. vs Trinta M.
+11:30 | Zika T. vs Biolek M.
 
-12:00 | Syroha M. vs Pleskot J.
+11:30 | Ruzicka J. vs Wolf F.
 
-12:00 | Dedek J. vs Klusacek P.
+11:30 | Unzeitig D. vs Kasnik S.
 
-12:00 | Chalupa M. vs Simecek J.
+11:30 | Bradach P. vs Gireth P.
 
-12:00 | Blejchar M. vs Adamczyk V.
+11:30 | Just F. vs Sedlak M.
 
-12:30 | Prokupek J. vs Pavelka R.
+12:00 | Wolf F. vs Huk M.
 
-12:30 | Ladislav H. vs Sulava L.
+12:00 | Kasnik S. vs Pagac Z.
 
-12:30 | Kolenic T. vs Briza F.
+12:00 | Gireth P. vs Postelt T.
 
-12:30 | Pagac Z. vs Unzeitig D.
+12:00 | Sedlak M. vs Vedmoch M.
 
-12:30 | Stoch J. vs Walek A.
+12:00 | Biolek M. vs Dzida J.
 
-14:00 | Vondrak M. vs Tuma D.
+12:30 | Nesnera J. vs Ruzicka J.
 
-14:00 | Vejvoda V. vs Klement M.
+12:30 | Szotkowski J. vs Zika T.
 
-14:00 | Nohejl V. vs Urbaniec R.
+12:30 | Kanera J. vs Bradach P.
 
-14:00 | Hudeczek R. vs Szotek D.
+12:30 | Holub M. vs Unzeitig D.
 
-14:00 | Kysely S. vs Heczko D.
+12:30 | Dousa T. vs Just F.
 
-14:30 | Zmuda P. vs Sobisek M.
+14:00 | Regner T. vs Trinta M.
 
-14:30 | Cmerda O. vs Svacha O.
+14:00 | Pavelka R. vs Fojt P.
 
-14:30 | Chalupa M. vs Simecek J.
+14:00 | Niezgoda R. vs Zika T.
 
-14:30 | Stolfa J. vs Zahradnik T.
+14:00 | Kypr T. vs Pagac Z.
 
-14:30 | Walek A. vs Blejchar M.
+14:00 | Bittner M. vs Brozhik K.
 
-15:00 | Tuma D. vs Zmuda P.
+14:30 | Briza F. vs Kolenic T.
 
-15:00 | Klement M. vs Stolfa J.
+14:30 | Tuma D. vs Krejci R.
 
-15:00 | Urbaniec R. vs Cmerda O.
+14:30 | Kasnik S. vs Holub M.
 
-15:00 | Szotek D. vs Chalupa M.
+14:30 | Dzida J. vs Szotkowski J.
 
-15:00 | Heczko D. vs Walek A.
+14:30 | Pozarsky J. vs Vedmoch M.
 
-15:30 | Sobisek M. vs Vondrak M.
+15:00 | Brozhik K. vs Tuma D.
 
-15:30 | Svacha O. vs Nohejl V.
+15:00 | Pagac Z. vs Kasnik S.
 
-15:30 | Zahradnik T. vs Vejvoda V.
+15:00 | Trinta M. vs Briza F.
 
-15:30 | Blejchar M. vs Kysely S.
+15:00 | Zika T. vs Dzida J.
 
-15:30 | Simecek J. vs Hudeczek R.
+15:00 | Fojt P. vs Pozarsky J.
 
-16:00 | Vejvoda V. vs Stolfa J.
+15:30 | Vedmoch M. vs Pavelka R.
 
-16:00 | Vondrak M. vs Zmuda P.
+15:30 | Kolenic T. vs Regner T.
 
-16:00 | Hudeczek R. vs Chalupa M.
+15:30 | Szotkowski J. vs Niezgoda R.
 
-16:00 | Nohejl V. vs Cmerda O.
+15:30 | Holub M. vs Kypr T.
 
-16:00 | Kysely S. vs Walek A.
+15:30 | Krejci R. vs Bittner M.
 
-16:30 | Tuma D. vs Sobisek M.
+16:00 | Bittner M. vs Tuma D.
 
-16:30 | Urbaniec R. vs Svacha O.
+16:00 | Regner T. vs Briza F.
 
-16:30 | Klement M. vs Zahradnik T.
+16:00 | Kypr T. vs Kasnik S.
 
-16:30 | Heczko D. vs Blejchar M.
+16:00 | Niezgoda R. vs Dzida J.
 
-16:30 | Szotek D. vs Simecek J.
+16:00 | Pavelka R. vs Pozarsky J.
 
-18:00 | Regner T. vs Smrcek M.
+16:30 | Zika T. vs Szotkowski J.
 
-18:00 | Hasmanda R. vs Syroha M.
+16:30 | Fojt P. vs Vedmoch M.
 
-18:00 | Hlawatschke A. vs Vizek M.
+16:30 | Brozhik K. vs Cermak V.
 
-18:30 | Zmuda P. vs Bayer A.
+16:30 | Pagac Z. vs Holub M.
 
-18:30 | Jan S. vs Novak M.
+16:30 | Trinta M. vs Kolenic T.
 
-18:30 | Framberk J. vs Strnad J.
+16:30 | Brozhik K. vs Krejci R.
 
-19:00 | Vizek M. vs Sobisek M.
+18:00 | Urbaniec R. vs Klement M.
 
-19:00 | Syroha M. vs Bruzek P.
+18:00 | Vaclavik M. vs Grohsgott J.
 
-19:00 | Smrcek M. vs Kucirek O.
-
-19:00 | Martin Vizek vs Martin Sobisek
-
-19:00 | Michal Syroha vs Petr Bruzek
-
-19:00 | Milan Smrcek vs Ondrej Kucirek
-
-19:30 | Ales Hlawatschke vs Petr Zmuda
-
-19:30 | Rostislav Hasman vs Jan Framberk
-
-19:30 | Tomas Regner vs Jan Steffan
-
-20:00 | Martin Sobisek vs Ales Bayer
-
-20:00 | Ondrej Kucirek vs Martin Novak
-
-20:00 | Petr Bruzek vs Jaroslav Strnad
-
-20:30 | Martin Vizek vs Petr Zmuda
-
-20:30 | Michal Syroha vs Jan Framberk
-
-20:30 | Milan Smrcek vs Jan Steffan
-
-21:00 | Ales Bayer vs Ales Hlawatschke
-
-21:00 | Jaroslav Strnad vs Rostislav Hasman
-
-21:00 | Martin Novak vs Tomas Regner
-
-21:30 | Jan Framberk vs Petr Bruzek
-
-21:30 | Jan Steffan vs Ondrej Kucirek
-
-21:30 | Petr Zmuda vs Martin Sobisek
-
-22:00 | Ales Bayer vs Martin Vizek
-
-22:00 | Jaroslav Strnad vs Michal Syroha
-
-22:00 | Martin Novak vs Milan Smrcek
-
-22:30 | Martin Sobisek vs Ales Hlawatschke
-
-22:30 | Ondrej Kucirek vs Tomas Regner
-
-22:30 | Petr Bruzek vs Rostislav Hasman
+18:00 | Kouble D. vs Klusacek P.
