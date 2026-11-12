@@ -1,5 +1,5 @@
 """
-SKATE10 v44 - Horas Pares + Rigor Estricto (Franja >= 75% | Stake 100 >= 85%)
+SKATE10 v45 - Horas Pares + Filtro Reciente Riguroso (7 días / H2H 2 meses) + OpenAI
 """
 
 import asyncio
@@ -31,7 +31,7 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "180"))
 DB_PATH = os.getenv("DB_PATH", "skate10.db")
 
-LEAD_MIN = 45          
+LEAD_MIN = 45         
 MIN_LEAD_MIN = 10
 
 DAILY_MIN_100 = 4
@@ -104,7 +104,7 @@ def seconds_since_last_100():
         return 999999
 
 
-# ---------------- PASO 1: PERPLEXITY AGENT API (/v1/responses) ----------------
+# ---------------- PASO 1: PERPLEXITY CON FILTRO RECIENTE (7d / H2H 2m) ----------------
 
 def extraer_texto_perplexity(data: dict) -> str:
     if isinstance(data.get("output_text"), str) and data["output_text"].strip():
@@ -125,13 +125,17 @@ def investigar_con_perplexity(player1: str, player2: str) -> str:
         return "Sin datos web en tiempo real."
 
     fecha_hoy = datetime.now(TZ).strftime("%Y-%m-%d")
+    
+    # Prompt estricto enfocado en rendimiento de la última semana y H2H de los últimos 2 meses
     prompt_busqueda = (
-        f"Realiza una auditoría estadística estricta y real a fecha de hoy ({fecha_hoy}) "
-        f"sobre el partido de Czech Liga Pro entre {player1} y {player2}. "
-        f"Busca obligatoriamente: "
-        f"1. Rendimiento exacto y partidos jugados hoy por {player1} y {player2}. "
-        f"2. Estado de forma en los últimos 5 encuentros de cada uno. "
-        f"3. Historial Head-to-Head (H2H) directo detallado y dominante."
+        f"Busca exclusivamente resultados y estadísticas de tenis de mesa de Czech Liga Pro "
+        f"restringidos estrictamente a los últimos 7 días y el historial H2H directo de los últimos 2 meses "
+        f"entre {player1} y {player2} a fecha de hoy ({fecha_hoy}). "
+        f"Dame de forma concisa: "
+        f"1. El balance de partidos y rendimiento reciente de {player1} en la última semana. "
+        f"2. El balance de partidos y rendimiento reciente de {player2} en la última semana. "
+        f"3. Enfrentamientos directos (H2H) recientes entre ambos en los últimos 60 días. "
+        f"No incluyas datos antiguos ni suposiciones."
     )
 
     headers = {
@@ -162,15 +166,15 @@ def investigar_con_perplexity(player1: str, player2: str) -> str:
             if resp.status_code == 200:
                 texto = extraer_texto_perplexity(resp.json())
                 if texto:
-                    log.info("Perplexity investigó con rigor: %s vs %s", player1, player2)
+                    log.info("Perplexity investigó con éxito (Filtro Reciente): %s vs %s", player1, player2)
                     return texto
         except Exception as exc:
             log.debug("Excepción en Perplexity: %s", exc)
 
-    return "No se pudo extraer información profunda en tiempo real."
+    return "No se pudo extraer información reciente de Perplexity."
 
 
-# ---------------- PASO 2: OPENAI (ANÁLISIS RIGUROSO) ----------------
+# ---------------- PASO 2: OPENAI (ANÁLISIS RIGUROSO Y NEUTRAL) ----------------
 
 def analizar_partido(player1: str, player2: str):
     datos_perplexity = investigar_con_perplexity(player1, player2)
@@ -180,30 +184,30 @@ def analizar_partido(player1: str, player2: str):
 
     prompt_analisis = f"""
 Actúa como un analista cuantitativo profesional de tenis de mesa (Czech Liga Pro).
-REGLA ABSOLUTA: Entorno 100% neutral. Exige rigor absoluto en las estadísticas. Descarta partidos parejos o dudosos.
+REGLA ABSOLUTA: Entorno 100% neutral. Exige rigor absoluto en las estadísticas recientes. Descarta partidos parejos o dudosos.
 
 Enfrentamiento:
 - Jugador 1: {player1}
 - Jugador 2: {player2}
 
-DATOS REALES OBTENIDOS DE LA WEB (PERPLEXITY):
+DATOS RECIENTES OBTENIDOS DE LA WEB (PERPLEXITY - Últimos 7 días y H2H 2 meses):
 \"\"\"
 {datos_perplexity}
 \"\"\"
 
 INSTRUCCIONES DE EVALUACIÓN:
-1. Analiza con rigor el H2H y la racha del día actual.
-2. Asigna porcentajes de probabilidad exactos basados puramente en rendimiento real. 
+1. Analiza con rigor el H2H reciente (últimos 2 meses) y la racha de la última semana.
+2. Asigna porcentajes de probabilidad exactos basados puramente en este rendimiento real. 
 3. El favorito debe superar estrictamente el umbral de calidad. Si hay paridad, no cumplirá con los mínimos exigidos.
-4. En "resumen", justifica de forma directa y clara basándote en los datos reales.
+4. En "resumen", justifica de forma directa y clara basándote en los datos recientes.
 
 Devuelve estrictamente un JSON válido:
 {{
-  "fav": "Nombre exacto del ganador ('{player1}' ou '{player2}')",
+  "fav": "Nombre exacto del ganador ('{player1}' o '{player2}')",
   "prob_p1": 80,
   "prob_p2": 20,
   "rating": 8.5,
-  "resumen": "Justificación basada en racha y dominio H2H.",
+  "resumen": "Justificación basada en rendimiento reciente y H2H de 2 meses.",
   "value_bet": "Sí / No"
 }}
 """
@@ -305,7 +309,7 @@ def fetch_fixtures_only():
     with db() as c:
         for it in items:
             c.execute("""INSERT OR IGNORE INTO fixtures(event_id, player1, player2, start_ts, hour_block) 
-                         VALUES (?,?,?,?,?)""",
+                        VALUES (?,?,?,?,?)""",
                       (it["id"], it["player1"], it["player2"], it["timestamp"], it["hour_block"]))
     log.info("Cartelera cargada en base de datos: %s eventos (Bloques de horas pares).", len(items))
 
@@ -319,7 +323,7 @@ def resolve_results():
             c.execute("UPDATE picks SET hit=1 WHERE event_id=?", (r["event_id"],))
 
 
-# ---------------- SELECCIÓN Y FILTRADO ----------------
+# ---------------- SELECCIÓN Y FILTRADO (MEJOR PARTIDO POR BLOQUE PAR) ----------------
 
 def select_best_pick_for_current_blocks():
     now = int(time.time())
@@ -384,6 +388,7 @@ def select_best_pick_for_current_blocks():
         log.info("Ningún partido del bloque par %s superó el %d%% requerido.", target_block, FRANJA_MIN_PROB)
         return None, None, 0
 
+    # Selecciona estrictamente el mejor partido del bloque (mayor probabilidad y rating)
     analyzed_rows.sort(key=lambda x: (x["prob"], x["rating"]), reverse=True)
     best_match = analyzed_rows[0]
 
@@ -418,7 +423,7 @@ def format_message(p, flow, mins, prob):
 
     if p["details"]:
         clean_details = p["details"].replace("<b>", "").replace("</b>", "")
-        lines += ["", f"📋 Análisis Riguroso:\n{clean_details}"]
+        lines += ["", f"📋 Análisis Riguroso (7d / H2H 2m):\n{clean_details}"]
 
     return "\n".join(lines)
 
@@ -481,17 +486,17 @@ async def monitor_loop(app: Application):
 # ---------------- COMANDOS TELEGRAM ----------------
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏓 SKATE10 v44 Activo.\n/estado · /resumen · /partidos · /test")
+    await update.message.reply_text("🏓 SKATE10 v45 Activo.\n/estado · /resumen · /partidos · /test")
 
 
 async def cmd_test(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pplx_ok = "✅ Conectada" if PERPLEXITY_API_KEY else "⚠️ Sin API Key"
     oai_ok = "✅ Conectada" if openai_client else "⚠️ Sin API Key"
     await update.message.reply_text(
-        f"✅ SKATE10 v44 Operativo.\n"
+        f"✅ SKATE10 v45 Operativo.\n"
         f"Filtro Franja: >= {FRANJA_MIN_PROB}%\n"
         f"Umbral Stake 100: >= {STAKE_100_MIN}%\n"
-        f"Perplexity: {pplx_ok} | OpenAI: {oai_ok}"
+        f"Perplexity (7d / H2H 2m): {pplx_ok} | OpenAI: {oai_ok}"
     )
 
 
@@ -538,7 +543,7 @@ async def cmd_partidos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 @web.get("/")
 def home():
-    return "SKATE10 v44 Activo", 200
+    return "SKATE10 v45 Activo", 200
 
 
 @web.get("/health")
@@ -569,7 +574,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    log.info("Iniciando SKATE10 v44...")
+    log.info("Iniciando SKATE10 v45...")
     app.run_polling(drop_pending_updates=True)
 
 
