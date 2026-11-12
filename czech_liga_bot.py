@@ -1,5 +1,6 @@
 """
-SKATE10 v45 - Horas Pares + Filtro Reciente Riguroso (7 días / H2H 2 meses) + OpenAI
+SKATE10 v57.1 (CZECH LIGA PRO) - Modo Flexible en Media Hora + Stake 100 Ultra Estricto (>= 82-85%)
+Pick Media Hora (El mejor disponible) | Stake 100 / Acierto Total (>= 85%) | Multi-Chat (/activar_grupo)
 """
 
 import asyncio
@@ -28,15 +29,15 @@ PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "").strip()
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-POLL_SECONDS = int(os.getenv("POLL_SECONDS", "180"))
-DB_PATH = os.getenv("DB_PATH", "skate10.db")
+POLL_SECONDS = int(os.getenv("POLL_SECONDS", "120"))
+DB_PATH = os.getenv("DB_PATH", "skate10_v571.db")
 
-LEAD_MIN = 45         
-MIN_LEAD_MIN = 10
+LEAD_MIN = 35
+MIN_LEAD_MIN = 5
 
-DAILY_MIN_100 = 4
-STAKE_100_MIN = 85     # Umbral exacto solicitado para Stake 100 (>= 85%)
-FRANJA_MIN_PROB = 75   # Umbral exacto solicitado para picks de franja (>= 75%)
+# NUEVOS UMBRALES:
+STAKE_ACIERTO_MIN = 85  # Stake 100 / Totalmente de Acierto (Subido a 85% por solicitud)
+# Nota: Para el de media hora, ya no se descarta si está por debajo de 78%, se toma el que más se acerque.
 
 TZ = ZoneInfo("America/Bogota")
 
@@ -77,17 +78,28 @@ def init_db():
             player1 TEXT, player2 TEXT, start_ts INTEGER, sent_at INTEGER,
             hit INTEGER, details TEXT, hour_block TEXT)""")
         c.execute("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)")
-        
-        try:
-            c.execute("ALTER TABLE analysis ADD COLUMN prob INTEGER DEFAULT 75")
-        except sqlite3.OperationalError:
-            pass
+        c.execute("CREATE TABLE IF NOT EXISTS extra_chats (chat_id TEXT PRIMARY KEY)")
 
 
-def count_100_today():
+def get_all_chat_ids():
+    init_db()
+    targets = set()
+    for cid in CHAT_ID.split(","):
+        if cid.strip():
+            targets.add(cid.strip())
+    with db() as c:
+        rows = c.execute("SELECT chat_id FROM extra_chats").fetchall()
+        for r in rows:
+            if r["chat_id"]:
+                targets.add(str(r["chat_id"]).strip())
+    return list(targets)
+
+
+def count_acierto_today():
+    init_db()
     inicio_dia = int(datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
     with db() as c:
-        return c.execute("SELECT COUNT(*) FROM picks WHERE flow='100' AND sent_at>=?", (inicio_dia,)).fetchone()[0]
+        return c.execute("SELECT COUNT(*) FROM picks WHERE flow='acierto' AND sent_at>=?", (inicio_dia,)).fetchone()[0]
 
 
 def block_already_sent(hour_block):
@@ -96,15 +108,7 @@ def block_already_sent(hour_block):
         return row[0] > 0 if row else False
 
 
-def seconds_since_last_100():
-    with db() as c:
-        row = c.execute("SELECT MAX(sent_at) as last_sent FROM picks WHERE flow='100'").fetchone()
-        if row and row["last_sent"]:
-            return time.time() - row["last_sent"]
-        return 999999
-
-
-# ---------------- PASO 1: PERPLEXITY CON FILTRO RECIENTE (7d / H2H 2m) ----------------
+# ---------------- PASO 1: PERPLEXITY (H2H + RACHA + CARGA Y DESPLAZAMIENTO) ----------------
 
 def extraer_texto_perplexity(data: dict) -> str:
     if isinstance(data.get("output_text"), str) and data["output_text"].strip():
@@ -122,20 +126,19 @@ def extraer_texto_perplexity(data: dict) -> str:
 def investigar_con_perplexity(player1: str, player2: str) -> str:
     if not PERPLEXITY_API_KEY:
         log.warning("PERPLEXITY_API_KEY no configurada.")
-        return "Sin datos web en tiempo real."
+        return "SIN_DATOS"
 
     fecha_hoy = datetime.now(TZ).strftime("%Y-%m-%d")
-    
-    # Prompt estricto enfocado en rendimiento de la última semana y H2H de los últimos 2 meses
+
     prompt_busqueda = (
-        f"Busca exclusivamente resultados y estadísticas de tenis de mesa de Czech Liga Pro "
-        f"restringidos estrictamente a los últimos 7 días y el historial H2H directo de los últimos 2 meses "
-        f"entre {player1} y {player2} a fecha de hoy ({fecha_hoy}). "
-        f"Dame de forma concisa: "
-        f"1. El balance de partidos y rendimiento reciente de {player1} en la última semana. "
-        f"2. El balance de partidos y rendimiento reciente de {player2} en la última semana. "
-        f"3. Enfrentamientos directos (H2H) recientes entre ambos en los últimos 60 días. "
-        f"No incluyas datos antiguos ni suposiciones."
+        f"Busca información estadística rigurosa y verificada en la web (Sofascore, Flashscore, BetsAPI, Czech Liga Pro) "
+        f"sobre el partido de tenis de mesa entre {player1} y {player2} a fecha de hoy ({fecha_hoy}). "
+        f"Investiga y detalla obligatoriamente estos 4 puntos clave:\n"
+        f"1. HISTORIAL H2H COMPLETO: Registro histórico de enfrentamientos directos entre {player1} y {player2}, y marcadores exactos de sus últimos 5 duelos directos.\n"
+        f"2. RENDIMIENTO Y RACHA ACTUAL: Marcadores exactos y récord de victorias/derrotas de {player1} y de {player2} en sus últimos 5 a 10 partidos jugados.\n"
+        f"3. CARGA DE PARTIDOS Y FATIGA RECIENTE: Cuántos partidos ha jugado cada uno en las últimas 24 horas, si vienen de partidos largos a 5 sets (3-2) y cuánto descanso tienen entre turnos.\n"
+        f"4. DESPLAZAMIENTO Y CAMBIO DE SEDE/TORNEO: Verifica en qué ciudad/sala o grupo viene jugando cada uno recientemente y si alguno tuvo que desplazarse de otra sede o cambiar de horario drásticamente.\n"
+        f"5. VEREDICTO DE PERPLEXITY: Basado en H2H, forma actual y desgaste físico/viajes, indica quién es el favorito real y con qué porcentaje."
     )
 
     headers = {
@@ -144,15 +147,9 @@ def investigar_con_perplexity(player1: str, player2: str) -> str:
     }
 
     payloads = [
-        {
-            "model": "perplexity/sonar",
-            "input": prompt_busqueda,
-            "tools": [{"type": "web_search"}]
-        },
-        {
-            "model": "sonar",
-            "input": prompt_busqueda
-        }
+        {"model": "perplexity/sonar-pro", "input": prompt_busqueda, "tools": [{"type": "web_search"}]},
+        {"model": "perplexity/sonar", "input": prompt_busqueda, "tools": [{"type": "web_search"}]},
+        {"model": "sonar", "input": prompt_busqueda}
     ]
 
     for payload in payloads:
@@ -161,53 +158,56 @@ def investigar_con_perplexity(player1: str, player2: str) -> str:
                 "https://api.perplexity.ai/v1/responses",
                 headers=headers,
                 json=payload,
-                timeout=30
+                timeout=38
             )
             if resp.status_code == 200:
                 texto = extraer_texto_perplexity(resp.json())
                 if texto:
-                    log.info("Perplexity investigó con éxito (Filtro Reciente): %s vs %s", player1, player2)
+                    log.info("Perplexity investigó (Czech Liga Pro): %s vs %s", player1, player2)
                     return texto
         except Exception as exc:
             log.debug("Excepción en Perplexity: %s", exc)
 
-    return "No se pudo extraer información reciente de Perplexity."
+    return "SIN_DATOS"
 
 
-# ---------------- PASO 2: OPENAI (ANÁLISIS RIGUROSO Y NEUTRAL) ----------------
+# ---------------- PASO 2: OPENAI (AUDITORÍA RIGUROSA 4 PILARES) ----------------
 
 def analizar_partido(player1: str, player2: str):
     datos_perplexity = investigar_con_perplexity(player1, player2)
 
-    if not openai_client:
-        return player1, 7.5, 75, f"📊 Probabilidades: {player1}: 50% | {player2}: 50%\nArgumentos: Sin API OpenAI.\nValue Bet: No"
+    if not openai_client or datos_perplexity == "SIN_DATOS":
+        return "NINGUNO", 5.0, 50, "Sin datos verificables."
 
     prompt_analisis = f"""
-Actúa como un analista cuantitativo profesional de tenis de mesa (Czech Liga Pro).
-REGLA ABSOLUTA: Entorno 100% neutral. Exige rigor absoluto en las estadísticas recientes. Descarta partidos parejos o dudosos.
+Eres un auditor cuantitativo implacable de tenis de mesa profesional (Czech Liga Pro).
+Abajo tienes el reporte de Perplexity para el duelo entre "{player1}" y "{player2}".
 
-Enfrentamiento:
-- Jugador 1: {player1}
-- Jugador 2: {player2}
+CRITERIOS OBLIGATORIOS DE AUDITORÍA (MUCHA RIGUROSIDAD):
+1. HISTORIAL H2H DIRECTO (Peso 40%): Revisa quién domina históricamente y en los últimos enfrentamientos directos. Si un jugador tiene paternidad clara (ej. 4-1, 5-1, 3-0 seguido), tiene gran ventaja psicológica y táctica.
+2. RENDIMIENTO Y FORMA RECIENTE (Peso 35%): Evalúa cómo vienen jugando en sus últimos 5-10 partidos. Un jugador con racha perdedora (ej. 1-4 o 2-3) NO puede recibir probabilidades altas.
+3. CARGA DE PARTIDOS, FATIGA Y DESPLAZAMIENTOS (Peso 25%):
+   - Penaliza severamente al jugador que tenga sobrecarga de partidos hoy (fatiga acumulada, varios duelos a 5 sets) o que haya tenido que desplazarse entre sedes/ciudades o cambiar de turno sin descanso.
+   - Premia al jugador que llega más fresco, adaptado a la mesa/sede y con menor desgaste físico.
 
-DATOS RECIENTES OBTENIDOS DE LA WEB (PERPLEXITY - Últimos 7 días y H2H 2 meses):
+ESCALA ESTRICTA DE PROBABILIDADES:
+- Si no hay datos reales verificables en el reporte, pon `"datos_reales": false` y `"prob_ganador": 50`.
+- 50% a 84% (PICK DE MEDIA HORA): El mejor análisis disponible para el bloque de la media hora.
+- 85% a 96% (STAKE 100 / ACIERTO TOTAL - EXCLUSIVO): SOLO cuando los 4 factores están alineados sólidamente a favor del mismo jugador (paternidad en H2H + racha ganadora superior + rival fatigado). Sé muy estricto para dar >= 85%.
+
+REPORTE DE PERPLEXITY:
 \"\"\"
 {datos_perplexity}
 \"\"\"
 
-INSTRUCCIONES DE EVALUACIÓN:
-1. Analiza con rigor el H2H reciente (últimos 2 meses) y la racha de la última semana.
-2. Asigna porcentajes de probabilidad exactos basados puramente en este rendimiento real. 
-3. El favorito debe superar estrictamente el umbral de calidad. Si hay paridad, no cumplirá con los mínimos exigidos.
-4. En "resumen", justifica de forma directa y clara basándote en los datos recientes.
-
-Devuelve estrictamente un JSON válido:
+Devuelve estrictamente este JSON válido:
 {{
-  "fav": "Nombre exacto del ganador ('{player1}' o '{player2}')",
-  "prob_p1": 80,
-  "prob_p2": 20,
-  "rating": 8.5,
-  "resumen": "Justificación basada en rendimiento reciente y H2H de 2 meses.",
+  "datos_reales": true,
+  "ganador_perplexity": "Nombre del jugador que Perplexity vio mejor",
+  "ganador_openai": "Nombre exacto del ganador tras tu auditoría ('{player1}' ou '{player2}')",
+  "prob_ganador": 50,
+  "rating": 5.0,
+  "resumen": "Detalla explícitamente: 1) El historial H2H exacto, 2) La racha reciente de ambos con cifras, y 3) El análisis de carga de partidos/desgaste o desplazamiento que respalda el porcentaje asignado.",
   "value_bet": "Sí / No"
 }}
 """
@@ -215,8 +215,8 @@ Devuelve estrictamente un JSON válido:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt_analisis}],
-            temperature=0.2,
-            max_tokens=300
+            temperature=0.1,
+            max_tokens=450
         )
         content = response.choices[0].message.content.strip()
         if content.startswith("```json"):
@@ -225,33 +225,74 @@ Devuelve estrictamente un JSON válido:
             content = content[3:-3].strip()
 
         data = json.loads(content)
-        prob_p1 = int(data.get("prob_p1", 50))
-        prob_p2 = int(data.get("prob_p2", 50))
-        rating = float(data.get("rating", 8.0))
+        datos_reales = bool(data.get("datos_reales", True))
+        resumen = str(data.get("resumen", "")).strip()
 
-        if prob_p1 >= prob_p2:
-            fav = player1
-            prob_ganador = prob_p1
+        frases_sin_datos = ("falta de datos", "falta de información", "no se encontraron", "sin datos específicos", "no hay información")
+        if not datos_reales or any(f in resumen.lower() for f in frases_sin_datos):
+            log.info("❌ Descartado por falta de datos: %s vs %s", player1, player2)
+            return "NINGUNO", 5.0, 50, "Sin estadísticas verificables."
+
+        ganador_raw = str(data.get("ganador_openai", "")).strip()
+        ganador_pplx = str(data.get("ganador_perplexity", "")).strip()
+        prob_ganador = int(data.get("prob_ganador", 50))
+        prob_ganador = max(50, min(96, prob_ganador))
+        prob_perdedor = 100 - prob_ganador
+
+        if prob_ganador >= STAKE_ACIERTO_MIN:
+            rating = 9.5
+        elif prob_ganador >= 78:
+            rating = 8.5
         else:
-            fav = player2
-            prob_ganador = prob_p2
+            rating = 7.5
 
-        resumen = data.get("resumen", "Análisis riguroso completado.")
-        value_bet = data.get("value_bet", "No")
+        if player2.lower() in ganador_raw.lower() and player1.lower() not in ganador_raw.lower():
+            fav = player2
+            prob_p1 = prob_perdedor
+            prob_p2 = prob_ganador
+        elif player1.lower() in ganador_raw.lower() and player2.lower() not in ganador_raw.lower():
+            fav = player1
+            prob_p1 = prob_ganador
+            prob_p2 = prob_perdedor
+        else:
+            p1_apellido = player1.split()[0].lower()
+            p2_apellido = player2.split()[0].lower()
+            if p2_apellido in ganador_raw.lower():
+                fav = player2
+                prob_p1 = prob_perdedor
+                prob_p2 = prob_ganador
+            else:
+                fav = player1
+                prob_p1 = prob_ganador
+                prob_p2 = prob_perdedor
+
+        # REGLA DE CANDADO: Si hay discrepancia entre motores, no puede ser Stake de Acierto (>=85%)
+        if ganador_pplx and (fav.split()[0].lower() not in ganador_pplx.lower()) and prob_ganador >= STAKE_ACIERTO_MIN:
+            log.info("⚠️ Discrepancia entre Perplexity y OpenAI. Se ajusta probabilidad de %d%% a 80%%.", prob_ganador)
+            prob_ganador = 80
+            prob_perdedor = 20
+            if fav == player1:
+                prob_p1, prob_p2 = 80, 20
+            else:
+                prob_p1, prob_p2 = 20, 80
+
+        value_bet = "Sí" if prob_ganador >= 70 else "No"
 
         details = (
             f"📊 Probabilidades: {player1}: {prob_p1}% | {player2}: {prob_p2}%\n"
+            f"🤝 Favorito 1: {ganador_pplx or fav} | Favorito 2: {fav}\n\n"
             f"Argumentos: {resumen}\n"
             f"Value Bet: {value_bet}"
         )
+        log.info("🎯 Consenso Czech Liga: %s vs %s -> Ganador: %s (%d%%)", player1, player2, fav, prob_ganador)
         return fav, rating, prob_ganador, details
 
     except Exception as exc:
         log.warning("Error en OpenAI: %s", exc)
-        return player1, 7.5, 75, f"📊 Probabilidades: {player1}: 50% | {player2}: 50%\nArgumentos: Error de procesamiento\nValue Bet: No"
+        return "NINGUNO", 5.0, 50, "Error de análisis."
 
 
-# ---------------- CARGA DE PARTIDOS (HORAS PARES) ----------------
+# ---------------- CARGA DE PARTIDOS (BLOQUES DE 30 MINUTOS) ----------------
 
 def cargar_partidos_desde_txt():
     archivo = "partidos.txt"
@@ -280,21 +321,20 @@ def cargar_partidos_desde_txt():
             try:
                 h, m = map(int, time_str.split(":"))
                 target_date = hoy_dt
-                if h < 6 and hoy_dt.hour >= 20:
+                if h < 19 and hoy_dt.hour >= 20:
                     target_date = hoy_dt + timedelta(days=1)
 
                 match_dt = target_date.replace(hour=h, minute=m, second=0, microsecond=0)
                 ts = int(match_dt.timestamp())
-                
-                # Bloque de horas pares (08:00, 10:00, 12:00, 14:00, 16:00...)
-                par_h = (h // 2) * 2
-                hour_block = f"{target_date.date().isoformat()}_{par_h:02d}:00"
+
+                half_m = 30 if m >= 30 else 0
+                hour_block = f"{target_date.date().isoformat()}_{h:02d}:{half_m:02d}"
             except Exception:
                 ts = int(time.time()) + (idx + 1) * 1800
                 hour_block = f"{hoy_dt.date().isoformat()}_{time_str.strip()}"
 
             partidos.append({
-                "id": f"match_{hoy_dt.date().isoformat()}_{idx}_{time_str.replace(':', '')}",
+                "id": f"match_{target_date.date().isoformat()}_{idx}_{time_str.replace(':', '')}",
                 "player1": player1.strip(),
                 "player2": player2.strip(),
                 "time": time_str.strip(),
@@ -305,16 +345,18 @@ def cargar_partidos_desde_txt():
 
 
 def fetch_fixtures_only():
+    init_db()
     items = cargar_partidos_desde_txt()
     with db() as c:
         for it in items:
-            c.execute("""INSERT OR IGNORE INTO fixtures(event_id, player1, player2, start_ts, hour_block) 
+            c.execute("""INSERT OR REPLACE INTO fixtures(event_id, player1, player2, start_ts, hour_block) 
                         VALUES (?,?,?,?,?)""",
                       (it["id"], it["player1"], it["player2"], it["timestamp"], it["hour_block"]))
-    log.info("Cartelera cargada en base de datos: %s eventos (Bloques de horas pares).", len(items))
+    log.info("Cartelera Czech Liga cargada: %s eventos (Franjas de 30 minutos).", len(items))
 
 
 def resolve_results():
+    init_db()
     with db() as c:
         rows = [dict(r) for r in c.execute(
             "SELECT event_id FROM picks WHERE hit IS NULL AND start_ts < ?",
@@ -323,9 +365,10 @@ def resolve_results():
             c.execute("UPDATE picks SET hit=1 WHERE event_id=?", (r["event_id"],))
 
 
-# ---------------- SELECCIÓN Y FILTRADO (MEJOR PARTIDO POR BLOQUE PAR) ----------------
+# ---------------- SELECCIÓN FLEXIBLE (TOMA EL MEJOR DISPONIBLE DE CADA MEDIA HORA) ----------------
 
 def select_best_pick_for_current_blocks():
+    init_db()
     now = int(time.time())
 
     with db() as c:
@@ -333,7 +376,7 @@ def select_best_pick_for_current_blocks():
             r["hour_block"] for r in c.execute("""
                 SELECT DISTINCT hour_block FROM fixtures
                 WHERE start_ts BETWEEN ? AND ?
-            """, (now + MIN_LEAD_MIN * 60, now + (LEAD_MIN + 60) * 60)).fetchall()
+            """, (now + MIN_LEAD_MIN * 60, now + LEAD_MIN * 60)).fetchall()
         ]
 
     if not upcoming_blocks:
@@ -351,14 +394,14 @@ def select_best_pick_for_current_blocks():
             FROM fixtures
             WHERE hour_block = ? AND start_ts > ?
             ORDER BY start_ts ASC
-        """, (target_block, now + 5 * 60)).fetchall()]
+        """, (target_block, now + 3 * 60)).fetchall()]
 
     if not block_matches:
         return None, None, 0
 
-    log.info("Evaluando bloque de HORA PAR %s (%d partidos)...", target_block, len(block_matches))
+    log.info("Evaluando bloque Czech Liga de MEDIA HORA %s (%d partidos)...", target_block, len(block_matches))
 
-    analyzed_rows = []
+    valid_analyzed = []
     with db() as c:
         for r in block_matches:
             eid = r["event_id"]
@@ -367,7 +410,7 @@ def select_best_pick_for_current_blocks():
                 fav, rating, prob_ganador, details = analizar_partido(r["player1"], r["player2"])
                 c.execute("""INSERT OR REPLACE INTO analysis(event_id, fav, rating, prob, quality, details, analyzed_at) 
                              VALUES (?,?,?,?,?,?,?)""",
-                          (eid, fav, rating, prob_ganador, "alta" if prob_ganador >= FRANJA_MIN_PROB else "baja", details, now))
+                          (eid, fav, rating, prob_ganador, "alta" if prob_ganador >= 78 else "moderada", details, now))
                 time.sleep(0.5)
             else:
                 fav = an["fav"]
@@ -375,8 +418,8 @@ def select_best_pick_for_current_blocks():
                 prob_ganador = an["prob"]
                 details = an["details"]
 
-            if prob_ganador >= FRANJA_MIN_PROB:
-                analyzed_rows.append({
+            if fav != "NINGUNO":
+                valid_analyzed.append({
                     **r,
                     "fav": fav,
                     "rating": rating,
@@ -384,46 +427,51 @@ def select_best_pick_for_current_blocks():
                     "prob": prob_ganador
                 })
 
-    if not analyzed_rows:
-        log.info("Ningún partido del bloque par %s superó el %d%% requerido.", target_block, FRANJA_MIN_PROB)
+    if not valid_analyzed:
+        log.info("🛑 No hay partidos válidos analizados para el bloque %s.", target_block)
         return None, None, 0
 
-    # Selecciona estrictamente el mejor partido del bloque (mayor probabilidad y rating)
-    analyzed_rows.sort(key=lambda x: (x["prob"], x["rating"]), reverse=True)
-    best_match = analyzed_rows[0]
+    # Ordena para tomar SIEMPRE el de mayor probabilidad del bloque (sea cual sea, garantizando envío)
+    valid_analyzed.sort(key=lambda x: (x["prob"], x["rating"]), reverse=True)
+    best_match = valid_analyzed[0]
+    best_prob = best_match["prob"]
 
-    sent_today = count_100_today()
-    can_send_100 = seconds_since_last_100() >= 2 * 3600
-    flow = "normal"
+    if best_prob >= STAKE_ACIERTO_MIN:
+        flow = "acierto"
+        log.info("🚨🔥 STAKE DE ACIERTO TOTAL CZECH DETECTADO (>= %d%%) -> %s (%d%%)", STAKE_ACIERTO_MIN, best_match["fav"], best_prob)
+    else:
+        flow = "normal"
+        log.info("🏓 MEJOR DE LA MEDIA HORA CZECH SELECCIONADO -> %s (%d%%)", best_match["fav"], best_prob)
 
-    if best_match["prob"] >= STAKE_100_MIN and sent_today < DAILY_MIN_100 and can_send_100:
-        flow = "100"
-
-    return best_match, flow, best_match["prob"]
+    return best_match, flow, best_prob
 
 
-# ---------------- FORMATO Y ENVÍO A TELEGRAM ----------------
+# ---------------- FORMATO Y ENVÍO MULTI-CHAT A TELEGRAM ----------------
 
 def format_message(p, flow, mins, prob):
     kickoff = datetime.fromtimestamp(p["start_ts"], TZ).strftime("%I:%M %p").lstrip("0")
-    stake = 100 if flow == "100" else int(max(7, min(9, round(p["rating"]))))
 
-    if flow == "100":
-        header = f"🔥 STAKE 100 (Probabilidad: {prob}%)"
+    if flow == "acierto":
+        stake = "100 (ACIERTO TOTAL) 🚨🔥"
+        header = f"🚨🔥 <b>CZECH LIGA PRO - STAKE 100 DE ACIERTO (Favorito: {prob}%)</b> 🔥🚨"
     else:
-        header = f"🏓 PICK HORA PAR (Favorito: {prob}%)"
+        stake = int(max(7, min(9, round(p["rating"]))))
+        header = f"🏓 <b>CZECH LIGA PRO - (Favorito: {prob}%)</b>"
 
     lines = [
         header,
-        f"🏆 Ganador: {p['fav']}",
+        f"🏆 <b>Ganador: {p['fav']}</b>",
         f"⚔️ {p['player1']} vs {p['player2']}",
-        f"⏱️ Inicio: {kickoff} (Col) | Stake: {stake}",
+        f"⏱️ Inicio: {kickoff} (Col) | Stake: <b>{stake}</b>",
         f"⏳ Arranca en ~{max(1, int(mins))} min"
     ]
 
     if p["details"]:
         clean_details = p["details"].replace("<b>", "").replace("</b>", "")
-        lines += ["", f"📋 Análisis Riguroso (7d / H2H 2m):\n{clean_details}"]
+        clean_details = clean_details.replace("Favorito Perplexity:", "Favorito 1:").replace("Favorito OpenAI:", "Favorito 2:")
+        if "\nArgumentos:" in clean_details and "\n\nArgumentos:" not in clean_details:
+            clean_details = clean_details.replace("\nArgumentos:", "\n\nArgumentos:")
+        lines += ["", "", clean_details]
 
     return "\n".join(lines)
 
@@ -433,13 +481,17 @@ async def send_pick(app, p, flow, mins, prob):
     keyboard = [[InlineKeyboardButton("📤 Enviar a otros chats", switch_inline_query=text)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await app.bot.send_message(
-        chat_id=CHAT_ID,
-        text=text,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=reply_markup
-    )
+    for cid in get_all_chat_ids():
+        try:
+            await app.bot.send_message(
+                chat_id=cid,
+                text=text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=reply_markup
+            )
+        except Exception as exc:
+            log.warning("No se pudo enviar al chat %s: %s", cid, exc)
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -448,8 +500,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("enviar_pick_"):
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(
-            chat_id=CHAT_ID,
-            text="✅ <b>¡Apuesta lista!</b>",
+            chat_id=update.effective_chat.id,
+            text="✅ <b>¡Pick Czech Liga listo!</b>",
             parse_mode="HTML"
         )
 
@@ -459,7 +511,7 @@ async def run_cycle(app):
     await asyncio.to_thread(resolve_results)
 
     best_p, flow, prob = await asyncio.to_thread(select_best_pick_for_current_blocks)
-    if best_p and CHAT_ID:
+    if best_p and get_all_chat_ids():
         mins = (best_p["start_ts"] - time.time()) / 60
         await send_pick(app, best_p, flow, mins, prob)
 
@@ -470,7 +522,7 @@ async def run_cycle(app):
                 (best_p["event_id"], flow, best_p["rating"], best_p["fav"], best_p["player1"],
                  best_p["player2"], best_p["start_ts"], int(time.time()), best_p["details"], best_p["hour_block"]))
 
-        log.info("Pick enviado -> Bloque Par: %s | Flujo: %s | Ganador: %s (%d%%)",
+        log.info("Pick Czech Liga enviado -> Bloque 30m: %s | Flujo: %s | Ganador: %s (%d%%)",
                  best_p["hour_block"], flow, best_p["fav"], prob)
 
 
@@ -479,36 +531,68 @@ async def monitor_loop(app: Application):
         try:
             await run_cycle(app)
         except Exception as exc:
-            log.error("Fallo en bucle: %s", str(exc)[:300])
+            log.error("Fallo en bucle Czech Liga: %s", str(exc)[:300])
         await asyncio.sleep(POLL_SECONDS)
 
 
 # ---------------- COMANDOS TELEGRAM ----------------
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏓 SKATE10 v45 Activo.\n/estado · /resumen · /partidos · /test")
+    await update.message.reply_text(
+        "🏓 SKATE10 Czech Liga v57.1 Activo.\n"
+        "/activar_grupo · /id · /estado · /resumen · /partidos · /test"
+    )
+
+
+async def cmd_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    cid = str(update.effective_chat.id)
+    await update.message.reply_text(
+        f"🆔 <b>El ID de este chat/grupo es:</b>\n<code>{cid}</code>\n\n"
+        f"💡 Si quieres que envíe los picks aquí automáticamente, escribe /activar_grupo",
+        parse_mode="HTML"
+    )
+
+
+async def cmd_activar_grupo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    init_db()
+    cid = str(update.effective_chat.id)
+    with db() as c:
+        c.execute("INSERT OR IGNORE INTO extra_chats(chat_id) VALUES (?)", (cid,))
+    await update.message.reply_text(
+        f"✅ <b>¡Grupo vinculado con éxito a Czech Liga Pro!</b>\n"
+        f"🆔 ID registrado: <code>{cid}</code>\n"
+        f"A partir de ahora recibirás aquí todos los picks al mismo tiempo que en tu chat privado.",
+        parse_mode="HTML"
+    )
 
 
 async def cmd_test(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pplx_ok = "✅ Conectada" if PERPLEXITY_API_KEY else "⚠️ Sin API Key"
     oai_ok = "✅ Conectada" if openai_client else "⚠️ Sin API Key"
+    destinos = ", ".join(get_all_chat_ids())
     await update.message.reply_text(
-        f"✅ SKATE10 v45 Operativo.\n"
-        f"Filtro Franja: >= {FRANJA_MIN_PROB}%\n"
-        f"Umbral Stake 100: >= {STAKE_100_MIN}%\n"
-        f"Perplexity (7d / H2H 2m): {pplx_ok} | OpenAI: {oai_ok}"
+        f"✅ SKATE10 Czech v57.1 Operativo (Modo Flexible + Stake 100 >= 85%).\n"
+        f"📡 Chats activos: {destinos}\n"
+        f"🚨 Stake 100 de Acierto: Estricto >= {STAKE_ACIERTO_MIN}%\n"
+        f"🏓 Pick Media Hora: Selecciona el mejor disponible del bloque.\n"
+        f"Perplexity: {pplx_ok} | OpenAI: {oai_ok}"
     )
 
 
 async def cmd_estado(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    init_db()
     with db() as c:
         n_fix = c.execute("SELECT COUNT(*) FROM fixtures WHERE start_ts>?", (int(time.time()),)).fetchone()[0]
     await update.message.reply_text(
-        f"🟢 Estado del Sistema\nPartidos futuros: {n_fix}\nStakes 100 hoy: {count_100_today()}/{DAILY_MIN_100}"
+        f"🟢 Estado Czech Liga Pro (Franjas 30 min)\n"
+        f"Partidos futuros: {n_fix}\n"
+        f"Stakes de Acierto (>=85%) enviados hoy: {count_acierto_today()}\n"
+        f"Destinos configurados: {len(get_all_chat_ids())}"
     )
 
 
 async def cmd_resumen(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    init_db()
     with db() as c:
         rows = c.execute("""SELECT flow, CAST(ROUND(rating) AS INT) AS r, COUNT(*) AS n, SUM(hit) AS h
             FROM picks WHERE hit IS NOT NULL GROUP BY flow, r ORDER BY flow, r DESC""").fetchall()
@@ -516,11 +600,12 @@ async def cmd_resumen(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not rows:
         await update.message.reply_text(f"Sin pronósticos resueltos. Pendientes: {pend}")
         return
-    lines = ["📈 Rendimiento"] + [f"• {r['flow']} · nota {r['r']}: {r['h']}/{r['n']} ({100 * r['h'] / r['n']:.0f}%)" for r in rows]
+    lines = ["📈 Rendimiento Czech Liga"] + [f"• {r['flow']} · nota {r['r']}: {r['h']}/{r['n']} ({100 * r['h'] / r['n']:.0f}%)" for r in rows]
     await update.message.reply_text("\n".join(lines + [f"Pendientes: {pend}"]))
 
 
 async def cmd_partidos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    init_db()
     now = int(time.time())
     with db() as c:
         rows = c.execute("""SELECT player1, player2, start_ts, hour_block
@@ -531,7 +616,7 @@ async def cmd_partidos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Sin partidos programados.")
         return
 
-    lines = [f"📋 <b>Cartelera (Horas Pares):</b>"]
+    lines = [f"📋 <b>Cartelera Czech Liga Próxima (Franjas de 30m):</b>"]
     for r in rows:
         hh = datetime.fromtimestamp(r["start_ts"], TZ).strftime("%I:%M %p")
         lines.append(f"• <b>{hh}</b> | Blq: {r['hour_block']} | {r['player1']} vs {r['player2']}")
@@ -539,11 +624,11 @@ async def cmd_partidos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
-# ---------------- WEB (Render) ----------------
+# ---------------- WEB (Render - Servidor directo con puerto dinámico) ----------------
 
 @web.get("/")
 def home():
-    return "SKATE10 v45 Activo", 200
+    return "SKATE10 Czech v57.1 Activo", 200
 
 
 @web.get("/health")
@@ -552,8 +637,8 @@ def health():
 
 
 def run_web():
-    from werkzeug.serving import make_server
-    make_server("0.0.0.0", int(os.getenv("PORT", "10000")), web).serve_forever()
+    port = int(os.getenv("PORT", "10000"))
+    web.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
 async def post_init(application: Application):
@@ -563,18 +648,23 @@ async def post_init(application: Application):
 
 def main():
     if not TOKEN or not CHAT_ID:
-        raise RuntimeError("Faltan variables esenciales.")
+        raise RuntimeError("Faltan variables esenciales (TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID).")
     init_db()
+    
+    # Arranca Flask en segundo plano para abrir el puerto web de Render de inmediato
     threading.Thread(target=run_web, daemon=True).start()
+    
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
-    for name, fn in [("start", cmd_start), ("test", cmd_test), ("estado", cmd_estado),
-                     ("resumen", cmd_resumen), ("partidos", cmd_partidos)]:
+    for name, fn in [
+        ("start", cmd_start), ("id", cmd_id), ("activar_grupo", cmd_activar_grupo),
+        ("test", cmd_test), ("estado", cmd_estado), ("resumen", cmd_resumen), ("partidos", cmd_partidos)
+    ]:
         app.add_handler(CommandHandler(name, fn))
 
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    log.info("Iniciando SKATE10 v45...")
+    log.info("Iniciando SKATE10 Czech v57.1 (Media Hora Flexible | Acierto >=85%%)...")
     app.run_polling(drop_pending_updates=True)
 
 
